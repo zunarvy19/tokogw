@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	_ "github.com/lib/pq"
 )
@@ -73,6 +74,73 @@ func createBarang(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(barang)
 }
 
+func updateBarang(w http.ResponseWriter, r *http.Request) {
+	var barang Barang
+	if err := json.NewDecoder(r.Body).Decode(&barang); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if barang.ID == 0 {
+		http.Error(w, "Missing id in request", http.StatusBadRequest)
+		return
+	}
+
+	result, err := db.Exec("UPDATE barang SET nama = $1, harga = $2, stok = $3 WHERE id = $4", barang.Nama, barang.Harga, barang.Stok, barang.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		http.Error(w, "Barang not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(barang)
+}
+
+func deleteBarang(w http.ResponseWriter, r *http.Request) {
+	// Mengambil id
+	idParam := r.URL.Query().Get("id")
+	if idParam == "" {
+		http.Error(w, "Missing id parameter", http.StatusBadRequest)
+		return
+	}
+
+	id, err := strconv.Atoi(idParam)
+	if err != nil {
+		http.Error(w, "Invalid id parameter", http.StatusBadRequest)
+		return
+	}
+
+	result, err := db.Exec("DELETE FROM barang WHERE id = $1", id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		http.Error(w, "Barang not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func main() {
 	initDB()
 	http.HandleFunc("/barang", func(w http.ResponseWriter, r *http.Request) {
@@ -81,6 +149,10 @@ func main() {
 			getBarang(w, r)
 		case http.MethodPost:
 			createBarang(w, r)
+		case http.MethodPut:
+			updateBarang(w, r)
+		case http.MethodDelete:
+			deleteBarang(w, r)
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
